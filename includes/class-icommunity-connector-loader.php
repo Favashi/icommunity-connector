@@ -41,6 +41,15 @@ class Icommunity_Connector_Loader {
 	 */
 	protected $filters;
 
+    /**
+     * The array of shortcodes registered with WordPress.
+     *
+     * @since    1.0.0
+     * @access   protected
+     * @var      array    $shortcodes    The shortcodes registered with WordPress to fire when the plugin loads.
+     */
+    protected $shortcodes;
+
 	/**
 	 * Initialize the collections used to maintain the actions and filters.
 	 *
@@ -50,6 +59,7 @@ class Icommunity_Connector_Loader {
 
 		$this->actions = array();
 		$this->filters = array();
+        $this->shortcodes = array();
 
 	}
 
@@ -80,6 +90,10 @@ class Icommunity_Connector_Loader {
 	public function add_filter( $hook, $component, $callback, $priority = 10, $accepted_args = 1 ) {
 		$this->filters = $this->add( $this->filters, $hook, $component, $callback, $priority, $accepted_args );
 	}
+
+    public function add_shortcode($tag, $component, $callback){
+        $this->shortcodes = $this->add($this->shortcodes, $tag, $component, $callback, null, null);
+    }
 
 	/**
 	 * A utility function that is used to register the actions and hooks into a single
@@ -123,6 +137,10 @@ class Icommunity_Connector_Loader {
 		foreach ( $this->actions as $hook ) {
 			add_action( $hook['hook'], array( $hook['component'], $hook['callback'] ), $hook['priority'], $hook['accepted_args'] );
 		}
+
+        foreach ($this->shortcodes as $shortcode) {
+            add_shortcode( $shortcode['hook'], array( $shortcode['component'], $shortcode['callback'] ) );
+        }
 
 	}
 

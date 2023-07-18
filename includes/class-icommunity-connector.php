@@ -156,8 +156,16 @@ class Icommunity_Connector {
 
 		$this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_styles' );
 		$this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_scripts' );
+        $this->loader->add_action( 'admin_menu', $plugin_admin, 'add_settings_page' );
+        $this->loader->add_action( 'admin_init', $plugin_admin, 'register_settings' );
+        $this->loader->add_filter( 'manage_users_columns', $plugin_admin, 'custom_add_signature_status_column'); //admin
+        $this->loader->add_filter( 'manage_users_custom_column', $plugin_admin, 'custom_show_signature_status_column_content', 10, 3); //admin
+        $this->loader->add_action( 'show_user_profile', $plugin_admin, 'display_signature_user_profile_field' );
+        $this->loader->add_action( 'edit_user_profile', $plugin_admin, 'display_signature_user_profile_field' );
 
-	}
+        $this->loader->add_action( 'rest_api_init', $plugin_admin, 'register_signature_rest_endpoint');
+        $this->loader->add_action( 'user_register', $plugin_admin, 'add_signature_status_meta' );
+    }
 
 	/**
 	 * Register all of the hooks related to the public-facing functionality
@@ -172,8 +180,9 @@ class Icommunity_Connector {
 
 		$this->loader->add_action( 'wp_enqueue_scripts', $plugin_public, 'enqueue_styles' );
 		$this->loader->add_action( 'wp_enqueue_scripts', $plugin_public, 'enqueue_scripts' );
+        $this->loader->add_shortcode('validate_signature', $plugin_public, 'validate_signature_shortcode');
 
-	}
+    }
 
 	/**
 	 * Run the loader to execute all of the hooks with WordPress.

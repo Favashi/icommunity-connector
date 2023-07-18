@@ -100,4 +100,55 @@ class Icommunity_Connector_Public {
 
 	}
 
+    /**
+     * The [validate_signature] shortcode.
+     *
+     * Accepts a title and will display a validation button.
+     *
+     * @param array  $atts    Shortcode attributes. Default empty.
+     * @param string $content Shortcode content. Default null.
+     * @param string $tag     Shortcode tag (name). Default empty.
+     * @return string Shortcode output.
+     */
+    function validate_signature_shortcode( $atts, $content = null ) {
+        // shortcode attributes
+        extract( shortcode_atts( array(
+            'url'    => '',
+            'title'  => '',
+            'target' => '',
+            'class' =>'',
+            'text'   => '',
+        ), $atts ) );
+        $content = $text ? $text : $content;
+
+        // REFACTOR THIS
+        $user = wp_get_current_user();
+        $signature_status = get_user_meta( $user->ID,'signature_status',true);
+        $url = get_user_meta(  $user->ID,'signature_url',true);
+
+        // Returns the button with a link
+        if ( $url && $signature_status != 'SUCCESS') {
+            $link_attr = array(
+                'href'   => esc_url( $url ),
+                'title'  => esc_attr( $title ),
+                'target' => ( 'blank' == $target ) ? '_blank' : '',
+                'class'  => esc_attr($class)
+            );
+            $link_attrs_str = "";
+            foreach ( $link_attr as $key => $val ) {
+                if ( $val ) {
+                    $link_attrs_str .= ' ' . $key . '="' . $val . '"';
+                }
+            }
+            return '<a' . $link_attrs_str . '><span>' . do_shortcode( $content ) . '</span></a>';
+        }
+
+        //TODO: Acabar botón en cuanto tenga la URL activa
+
+        // Return as span when no link defined
+        /*else {
+            return '<a class="custombutton"><span>' . do_shortcode( $content ) . '</span></a>';
+        }*/
+    }
+
 }
