@@ -14,7 +14,7 @@
 ?>
 
 <!-- This file should primarily consist of HTML with a little bit of PHP. -->
-<h2><?php echo __( 'IBS Connector Settings', 'ultimate-member' );?></h2>
+<h2><?php echo __( 'IBS Connector Settings', 'icommunity-connector' );?></h2>
 <form action="options.php" method="post">
     <?php
     settings_fields('icommunity_connector_plugin_options' );

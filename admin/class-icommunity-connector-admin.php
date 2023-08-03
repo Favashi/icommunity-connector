@@ -189,13 +189,13 @@ class Icommunity_Connector_Admin {
      */
     public function get_status_label($status){
         switch ($status) {
-            case 'PENDING':
+            case Kyc_Status::PENDING:
                 $type = 'warning';
                 break;
-            case 'SUCCESS':
+            case Kyc_Status::SUCCESS:
                 $type = 'success';
                 break;
-            case 'FAILED':
+            case Kyc_Status::FAILED:
                 $type = 'error';
                 break;
             default:
@@ -204,17 +204,59 @@ class Icommunity_Connector_Admin {
         return '<span class="notice notice-'.$type.'" inline>'.$status.'<span>';
     }
 
-    public function add_signature_status_meta( $user_id ) {
+    /**
+     * Verifies signature status and calls creation if needed on registering
+     * @param int $userid
+     * @return void
+     * @throws Exception
+     */
+    public function verify_signature_status_register_user(int $userid){
+        $user = get_user_by('id',$userid);
+        $this->verify_signature_status($user->user_login,$user);
+    }
 
-        $options = get_option( 'icommunity_connector_plugin_options' );
+    /**
+     * Verifies signature status and calls creation if needed on login
+     * @param string $user_login
+     * @param WP_User $user
+     * @return void|WP_Error
+     * @throws Exception
+     * @since 1.0.0
+     */
+    public function verify_signature_status(string $user_login, WP_User $user){
+           //if(metadata_exists( 'user', $user->ID, 'signature_id' ) && metadata_exists( 'user', $user->ID, 'signature_url') && metadata_exists( 'user', $user->ID, 'signature_status')) return;
+            $options = get_option( 'icommunity_connector_plugin_options' );
 
-        if(empty($options) || is_null($options['api_url']) || is_null('api_token')){
-            return new WP_Error( 'broke', __( 'Compruebe que la URL y Token están definidos antes de continuar', 'icommunity-connector' ) );
-        }
+            if(empty($options) || is_null($options['api_url']) || is_null('api_token')){
+                return new WP_Error( 'broke', __( 'Compruebe que la URL y Token están definidos antes de continuar', 'icommunity-connector' ) );
+            }
 
-        $api_url = $options['api_url'];
-        $api_token = $options['api_token'];
-        $signature_name = $user_id;
+            $api_url = $options['api_url'];
+            $api_token = $options['api_token'];
+
+            $signature_status = get_user_meta( $user->ID,'signature_status',true);
+            switch ($signature_status){
+                case '':
+                    $this->remote_create_signature($user, $api_url, $api_token);
+                    break;
+                case Kyc_Status::FAILED:
+                    $this->remote_retry_signature($user, $api_url, $api_token);
+                    break;
+            }
+    }
+
+    /**
+     * Calls to create new Signature to signatures endpoint
+     * @param WP_User $user
+     * @param string $api_url
+     * @param string $api_token
+     * @return void
+     * @throws Exception
+     * @since 1.0.0
+     */
+    public function remote_create_signature(WP_User $user, string $api_url, string $api_token){
+        $userdata = get_userdata($user->ID);
+        $signature_name = empty($userdata->user_firstname) || empty($userdata->user_lastname) ? $user->user_nicename.'-'.$user->ID : sanitize_title($userdata->user_firstname).'-'.sanitize_title($userdata->user_lastname).'-'.$user->ID;
 
         $request = wp_remote_post(
             $api_url . 'signatures',
@@ -231,18 +273,47 @@ class Icommunity_Connector_Admin {
             ]
         );
 
-        if ( is_wp_error( $request ) || wp_remote_retrieve_response_code( $request ) != 201 ) {
-            $status = 'FAILED';
+        if (is_wp_error( $request )) {
+            $error_message = $request->get_error_message();
+            throw new Exception( $error_message );
+        }
+        elseif(wp_remote_retrieve_response_code( $request ) >= 400) {
+            return;
         }
         else{
             $response = json_decode( wp_remote_retrieve_body( $request ), true );
-            $status = 'PENDING';
-            update_user_meta( $user_id, 'signature_id', $response["signature_id"] );
-            update_user_meta($user_id, 'signature_url', $response["url"]);
+            $status = Kyc_Status::PENDING;
+            update_user_meta( $user->ID, 'signature_id', $response["signature_id"] );
+            update_user_meta($user->ID, 'signature_url', $response["url"]);
+            update_user_meta( $user->ID, 'signature_status', $status );
         }
+    }
+    public function remote_retry_signature(WP_User $user, string $api_url, string $api_token){
+        $signature_id = get_user_meta( $user->ID,'signature_id',true);
 
-        update_user_meta( $user_id, 'signature_status', $status );
+        $request = wp_remote_post(
+            $api_url . 'signatures/'.$signature_id,
+            [
+                'method' => 'PUT',
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $api_token,
+                    'Content-Type' => 'application/json',
+                ],
+                'timeout' => 60,
+            ]
+        );
 
+        if (is_wp_error( $request )) {
+            $error_message = $request->get_error_message();
+            throw new Exception( $error_message );
+        }
+        elseif(wp_remote_retrieve_response_code( $request ) >= 400) {
+            return;
+        }
+        else{
+            $status = Kyc_Status::PENDING;
+            update_user_meta( $user->ID, 'signature_status', $status );
+        }
     }
 
     public function register_signature_rest_endpoint(){

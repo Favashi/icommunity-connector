@@ -117,17 +117,16 @@ class Icommunity_Connector_Public {
             'title'  => '',
             'target' => '',
             'class' =>'',
-            'text'   => '',
+            'text'   => ''
         ), $atts ) );
         $content = $text ? $text : $content;
 
-        // REFACTOR THIS
         $user = wp_get_current_user();
         $signature_status = get_user_meta( $user->ID,'signature_status',true);
         $url = get_user_meta(  $user->ID,'signature_url',true);
 
         // Returns the button with a link
-        if ( $url && $signature_status != 'SUCCESS') {
+        if ( $url && $signature_status == Kyc_Status::PENDING) {
             $link_attr = array(
                 'href'   => esc_url( $url ),
                 'title'  => esc_attr( $title ),
@@ -142,13 +141,6 @@ class Icommunity_Connector_Public {
             }
             return '<a' . $link_attrs_str . '><span>' . do_shortcode( $content ) . '</span></a>';
         }
-
-        //TODO: Acabar botón en cuanto tenga la URL activa
-
-        // Return as span when no link defined
-        /*else {
-            return '<a class="custombutton"><span>' . do_shortcode( $content ) . '</span></a>';
-        }*/
     }
 
 }

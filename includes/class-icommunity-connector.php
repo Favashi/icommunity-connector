@@ -122,6 +122,11 @@ class Icommunity_Connector {
 		 */
 		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'public/class-icommunity-connector-public.php';
 
+        /**
+         * Enumerator for KYC status
+         */
+        require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/enum-kyc-status.php';
+
 		$this->loader = new Icommunity_Connector_Loader();
 
 	}
@@ -164,7 +169,8 @@ class Icommunity_Connector {
         $this->loader->add_action( 'edit_user_profile', $plugin_admin, 'display_signature_user_profile_field' );
 
         $this->loader->add_action( 'rest_api_init', $plugin_admin, 'register_signature_rest_endpoint');
-        $this->loader->add_action( 'user_register', $plugin_admin, 'add_signature_status_meta' );
+        $this->loader->add_action( 'user_register', $plugin_admin, 'verify_signature_status_register_user');
+        $this->loader->add_action('wp_login', $plugin_admin, 'verify_signature_status',10, 2);
     }
 
 	/**
