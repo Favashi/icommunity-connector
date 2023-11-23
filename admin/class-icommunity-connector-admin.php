@@ -127,6 +127,7 @@ class Icommunity_Connector_Admin {
 
         add_settings_field( 'icommunity_setting_api_url', __('Url de API','icommunity-connector'), array($this,'plugin_setting_api_url'), 'icommunity-connector', 'api_settings' );
         add_settings_field( 'icommunity_setting_api_token', __('Token de acceso','icommunity-connector'), array($this,'plugin_setting_api_token'), 'icommunity-connector', 'api_settings' );
+        add_settings_field( 'icommunity_setting_verified_role', __( 'Rol de verificado', 'icommunity-connector' ), array($this,'plugin_setting_verified_role'), 'icommunity-connector', 'api_settings' );
     }
 
     public function plugin_section_text() {
@@ -137,9 +138,17 @@ class Icommunity_Connector_Admin {
         $options = get_option( 'icommunity_connector_plugin_options' );
         echo "<input class='large-text' id='icommunity_setting_api_token' name='icommunity_connector_plugin_options[api_url]' type='text' value='" . esc_attr( $options['api_url'] ) . "' />";
     }
+
     public function plugin_setting_api_token() {
         $options = get_option( 'icommunity_connector_plugin_options' );
         echo "<input class='large-text' id='icommunity_setting_api_token' name='icommunity_connector_plugin_options[api_token]' type='text' value='" . esc_attr( $options['api_token'] ) . "' />";
+    }
+
+    public function plugin_setting_verified_role(){
+        $options = get_option( 'icommunity_connector_plugin_options' );
+        echo "<select name='icommunity_connector_plugin_options[verified_role]'>";
+        echo wp_dropdown_roles($options['verified_role'] );
+        echo "</select>";
     }
 
     /**
@@ -153,7 +162,52 @@ class Icommunity_Connector_Admin {
     }
 
     /**
-     * Adds Content To The Custom Added Column
+     * Adds Custom Column To Evidence List Table
+     * @param $columns
+     * @since 1.0.0
+     */
+    function custom_add_evidence_status_column($columns) {
+        $post_type = get_post_type();
+
+        if ($post_type == 'ibs_evidence') {
+            unset($columns['date']);
+            $columns['evidence_id'] = 'Evidence ID';
+            $columns['evidence_network'] = 'Network';
+            $columns['certification_hash'] = 'Certification Hash';
+            $columns['certification_timestamp'] = 'Certification Timestamp';
+            $columns['evidence_status'] = 'Evidence Status';
+        }
+        return $columns;
+    }
+    /**
+     * Adds Content To The Custom Evidence Added Column
+     * @param $value
+     * @param $column_name
+     * @param $evidence_id
+     * @since 1.0.0
+     */
+    function custom_show_evidence_status_column_content($column_name, $evidence_id) {
+        switch ($column_name){
+            case 'evidence_id':
+                echo get_post_meta( $evidence_id,'evidence_id',true);
+                break;
+            case 'evidence_network':
+                echo get_post_meta( $evidence_id,'network',true);
+                break;
+            case 'certification_hash':
+                echo get_post_meta( $evidence_id,'certification_hash',true);
+                break;
+            case 'certification_timestamp':
+                echo get_post_meta( $evidence_id,'certification_timestamp',true);
+                break;
+            case 'evidence_status':
+                echo $this->get_status_label(get_post_meta( $evidence_id,'evidence_status',true));
+                break;
+        }
+    }
+
+    /**
+     * Adds Content To The Custom User Added Column
      * @param $value
      * @param $column_name
      * @param $user_id
@@ -182,7 +236,7 @@ class Icommunity_Connector_Admin {
     <?php }
 
     /**
-     * Returns KYC status label with styles
+     * Returns status label with styles
      * @param $status
      * @return string
      * @since 1.0.0
@@ -190,11 +244,13 @@ class Icommunity_Connector_Admin {
     public function get_status_label($status){
         switch ($status) {
             case Kyc_Status::PENDING:
+            case Evidence_Status::WAITING:
                 $type = 'warning';
                 break;
             case Kyc_Status::SUCCESS:
-                $type = 'success';
-                break;
+            case Evidence_Status::CERTIFIED:
+                    $type = 'success';
+                    break;
             case Kyc_Status::FAILED:
                 $type = 'error';
                 break;
@@ -224,7 +280,7 @@ class Icommunity_Connector_Admin {
      * @since 1.0.0
      */
     public function verify_signature_status(string $user_login, WP_User $user){
-           //if(metadata_exists( 'user', $user->ID, 'signature_id' ) && metadata_exists( 'user', $user->ID, 'signature_url') && metadata_exists( 'user', $user->ID, 'signature_status')) return;
+
             $options = get_option( 'icommunity_connector_plugin_options' );
 
             if(empty($options) || is_null($options['api_url']) || is_null('api_token')){
@@ -288,6 +344,16 @@ class Icommunity_Connector_Admin {
             update_user_meta( $user->ID, 'signature_status', $status );
         }
     }
+
+    /**
+     * Calls to retry remote signature validation process
+     * @param WP_User $user
+     * @param string $api_url
+     * @param string $api_token
+     * @return void
+     * @throws Exception
+     * @since 1.0.0
+     */
     public function remote_retry_signature(WP_User $user, string $api_url, string $api_token){
         $signature_id = get_user_meta( $user->ID,'signature_id',true);
 
@@ -316,10 +382,16 @@ class Icommunity_Connector_Admin {
         }
     }
 
+    /**
+     * Registers KYC Signature endpoint
+     * @return void
+     * @since 1.0.0
+     */
     public function register_signature_rest_endpoint(){
         register_rest_route( 'icommunity-connector/v1', '/signature', array(
             'methods' => 'POST',
             'callback' => array($this,'update_signature_status'),
+            'permission_callback' => '__return_true',
             'args' => array(
                 'event' => array(
                     'required' => true,
@@ -345,7 +417,14 @@ class Icommunity_Connector_Admin {
         ));
     }
 
+    /**
+     * Updates KYC Signature status
+     * @param WP_REST_Request $request
+     * @return void|WP_Error
+     * @since 1.0.0
+     */
     public function update_signature_status(WP_REST_Request $request) {
+        $options = get_option( 'icommunity_connector_plugin_options' );
 
         $parameters = $request->get_json_params();
 
@@ -363,8 +442,143 @@ class Icommunity_Connector_Admin {
             return new WP_Error( 'no_user', 'No user matches signature_id', array( 'status' => 404 ) );
         }
         $idx = strrpos($parameters['event'], '.');
-        $status = substr($parameters['event'], $idx + 1);
+        $status =  strtoupper(substr($parameters['event'], $idx + 1));
 
-        update_user_meta( $user->ID, 'signature_status', strtoupper($status) );
+        update_user_meta( $user->ID, 'signature_status', $status);
+
+        if($status == Kyc_Status::SUCCESS) $user->add_role($options['verified_role']);
+    }
+
+    /**
+     * Registers Evidence rest endpoint
+     * @return void
+     * @since 1.2.0
+     */
+    public function register_evidence_rest_endpoint(){
+        register_rest_route( 'icommunity-connector/v1', '/evidence', array(
+            'methods' => 'POST',
+            'callback' => array($this,'update_evidence_status'),
+            'permission_callback' => '__return_true',
+            'args' => array(
+                'event' => array(
+                    'required' => true,
+                    'type' => 'string',
+                    'description' => 'Evidence certification status',
+                     'enum' => array(
+                        'evidence.waiting',
+                        'evidence.certified'
+                     ),
+                ),
+                'data' => array(
+                    'required' => true,
+                    'type' => 'object',
+                    'description' => 'Data object containing evidence information',
+                    'properties' => array(
+                        'signature_id' => array(
+                            'required' => 'true',
+                            'type' => 'string'
+                        ),
+                        'network' => array(
+                            'required' => 'true',
+                            'type' => 'string'
+                        ),
+                        'evidence_id' => array(
+                            'required' => 'true',
+                            'type' => 'string'
+                        ),
+                        'certification_hash' => array(
+                            'required' => 'true',
+                            'type' => 'string'
+                        ),
+                        'certification_timestamp' => array(
+                            'required' => 'true',
+                            'type' => 'string'
+                        ),
+                        'payload' => array(
+                            'required' => true,
+                            'type' => 'object',
+                            'description' => 'Object containing payload content',
+                            'properties' => array(
+                                'title' => array(
+                                    'required' => 'true',
+                                    'type' => 'string'
+                                ),
+                                'integrity' => array(
+                                    'required' => true,
+                                    'type' => 'object',
+                                    'description' => 'Object containing integrity data',
+                                    'properties' => array(
+                                        'name' => array(
+                                            'required' => 'true',
+                                            'type' => 'string'
+                                        ),
+                                        'type' => array(
+                                            'required' => 'true',
+                                            'type' => 'string'
+                                        ),
+                                        'checksum' => array(
+                                            'required' => 'true',
+                                            'type' => 'string'
+                                        ),
+                                        'algorithm' => array(
+                                            'required' => 'true',
+                                            'type' => 'string'
+                                        ),
+                                        'sanitizer' => array(
+                                            'required' => 'true',
+                                            'type' => 'string'
+                                        ),
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        ));
+    }
+
+    /**
+     * Updates Evidence status and data from IBS
+     * @param WP_REST_Request $request
+     * @return void|WP_Error
+     * @since 1.2.0
+     */
+    public function update_evidence_status(WP_REST_Request $request) {
+
+        $parameters = $request->get_json_params();
+
+        $post =  reset(get_posts(array(
+            'numberposts'   => 1,
+            'post_type'     => 'ibs_evidence',
+            'meta_key'      => 'evidence_id',
+            'meta_value'    => $parameters['data']['evidence_id'],
+        )));
+
+
+        if ( empty( $post ) ) {
+            return new WP_Error( 'no_evidence', 'No Evidence matches evidence_id', array( 'status' => 404 ) );
+        }
+        $idx = strrpos($parameters['event'], '.');
+        $status =  strtoupper(substr($parameters['event'], $idx + 1));
+
+
+        $metaValues = array(
+            'evidence_status' =>  $status,
+            'network' =>  $parameters['data']['network'],
+            'certification_hash' =>  $parameters['data']['certification_hash'],
+            'certification_timestamp' =>  $parameters['data']['certification_timestamp'],
+            'integrity_title' => $parameters['data']['payload']['title'],
+            'integrity_name' => $parameters['data']['payload']['integrity'][0]['name'],
+            'integrity_type' => $parameters['data']['payload']['integrity'][0]['type'],
+            'integrity_checksum' => $parameters['data']['payload']['integrity'][0]['checksum'],
+            'integrity_algorithm' => $parameters['data']['payload']['integrity'][0]['algorithm'],
+            'integrity_sanitizer' => $parameters['data']['payload']['integrity'][0]['sanitizer']
+        );
+
+        wp_update_post(array(
+            'ID'        => $post->ID,
+            'meta_input'=> $metaValues,
+        ));
     }
 }

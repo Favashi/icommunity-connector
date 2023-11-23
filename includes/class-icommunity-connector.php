@@ -78,6 +78,7 @@ class Icommunity_Connector {
 		$this->set_locale();
 		$this->define_admin_hooks();
 		$this->define_public_hooks();
+        $this->define_modules_hooks();
 
 	}
 
@@ -123,9 +124,15 @@ class Icommunity_Connector {
 		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'public/class-icommunity-connector-public.php';
 
         /**
+         * The class responsible for defining all actions that occur in the public-facing
+         * side of the site.
+         */
+        require_once plugin_dir_path( dirname( __FILE__ ) ) . 'modules/class-icommunity-connector-modules.php';
+
+        /**
          * Enumerator for KYC status
          */
-        require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/enum-kyc-status.php';
+        require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/enum-ibs-status.php';
 
 		$this->loader = new Icommunity_Connector_Loader();
 
@@ -163,14 +170,18 @@ class Icommunity_Connector {
 		$this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_scripts' );
         $this->loader->add_action( 'admin_menu', $plugin_admin, 'add_settings_page' );
         $this->loader->add_action( 'admin_init', $plugin_admin, 'register_settings' );
-        $this->loader->add_filter( 'manage_users_columns', $plugin_admin, 'custom_add_signature_status_column'); //admin
-        $this->loader->add_filter( 'manage_users_custom_column', $plugin_admin, 'custom_show_signature_status_column_content', 10, 3); //admin
+        $this->loader->add_filter( 'manage_users_columns', $plugin_admin, 'custom_add_signature_status_column');
+        $this->loader->add_filter( 'manage_users_custom_column', $plugin_admin, 'custom_show_signature_status_column_content', 10, 3);
+        $this->loader->add_filter( 'manage_ibs_evidence_posts_columns', $plugin_admin, 'custom_add_evidence_status_column');
+        $this->loader->add_filter( 'manage_ibs_evidence_posts_custom_column', $plugin_admin, 'custom_show_evidence_status_column_content', 10, 3);
         $this->loader->add_action( 'show_user_profile', $plugin_admin, 'display_signature_user_profile_field' );
         $this->loader->add_action( 'edit_user_profile', $plugin_admin, 'display_signature_user_profile_field' );
 
         $this->loader->add_action( 'rest_api_init', $plugin_admin, 'register_signature_rest_endpoint');
         $this->loader->add_action( 'user_register', $plugin_admin, 'verify_signature_status_register_user');
         $this->loader->add_action('wp_login', $plugin_admin, 'verify_signature_status',10, 2);
+
+        $this->loader->add_action( 'rest_api_init', $plugin_admin, 'register_evidence_rest_endpoint');
     }
 
 	/**
@@ -187,8 +198,15 @@ class Icommunity_Connector {
 		$this->loader->add_action( 'wp_enqueue_scripts', $plugin_public, 'enqueue_styles' );
 		$this->loader->add_action( 'wp_enqueue_scripts', $plugin_public, 'enqueue_scripts' );
         $this->loader->add_shortcode('validate_signature', $plugin_public, 'validate_signature_shortcode');
-
     }
+
+    private function define_modules_hooks(){
+        $plugin_modules = new ICommunity_Connector_Modules($this->get_icommunity_connector(), $this->get_version());
+        $this->loader->add_action( 'init', $plugin_modules, 'ibs_add_evidence_post_type' );
+        $this->loader->add_action( 'init', $plugin_modules, 'ibs_evidence_meta_register' );
+        $this->loader->add_action('elementor_pro/forms/actions/register', $plugin_modules,'ibs_add_connection_action');
+    }
+
 
 	/**
 	 * Run the loader to execute all of the hooks with WordPress.
